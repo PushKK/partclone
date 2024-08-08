@@ -1,4 +1,4 @@
-AC_INIT([Partclone],[0.3.27],[thomas@clonezilla.org])
+AC_INIT([Partclone],[0.3.32],[thomas@clonezilla.org])
 AM_INIT_AUTOMAKE([-Wall foreign])
 AM_GNU_GETTEXT_VERSION([0.16.1])
 AM_GNU_GETTEXT([external])
@@ -398,6 +398,11 @@ AC_MSG_ERROR([*** btrfs depend library (libblkid-dev) header not found]))
 supported_fs=$supported_fs" btrfs"
 btrfs_version="unknown"
 fi
+
+#condition for CPU target
+AC_CANONICAL_TARGET
+AM_CONDITIONAL([X64], [test "$target_cpu" = x86_64])
+
 #end of check btrfs
 
 ##minix##
@@ -479,6 +484,11 @@ AC_ARG_ENABLE([fs-test],
 )
 AM_CONDITIONAL(ENABLE_FS_TEST, test "$enable_fs_test" = yes)
 AM_CONDITIONAL(ENABLE_FEATURE_TEST, test "$enable_feature_test" = yes)
+
+##bash-completion
+PKG_CHECK_VAR([bashcompletiondir], [bash-completion], [completionsdir], [],
+    [bashcompletiondir="${sysconfdir}/bash_completion.d"])
+AC_SUBST(bashcompletiondir)
 
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([

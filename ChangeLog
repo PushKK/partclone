@@ -1,4 +1,135 @@
+2024-07-15  Thomas Tsai  <tlinux.tsai@gmail.com>
+
+	fix  read error: Success issue, revert ntfsclone
+
+2024-07-11  Thomas Tsai  <tlinux.tsai@gmail.com>
+
+	add hfs plus Signature log test
+
+2024-06-21  Thomas Tsai  <tlinux.tsai@gmail.com>
+
+	update configure.ac and set version 0.3.31; release 0.3.31
+
+	update action for docker build
+
+	release 0.3.30
+
+	update log and docs
+
+	Merge pull request #54 from pfrouleau/review/include_NTFS_backup_boot_sector_in_the_image
+	Include the NTFS Boot Record backup in the cloned image
+
+	Merge pull request #55 from pfrouleau/fix/get_exec_name
+	Fix get_exec_name(): when partclone in installed, there is no '/' in argv0
+
+	update git version generate by describe
+
+	add option prog_second to display in seconds
+
+2024-06-17  Thomas Tsai  <tlinux.tsai@gmail.com>
+
+	Merge pull request #249 from TMR5454/vmfs
+	Add missing return in libvmfs_version().
+
+	Merge pull request #248 from TMR5454/master
+	Fix tiny resource leak.
+
+2024-06-17  Tamura Dai  <kirinode0@gmail.com>
+
+	Add missing return in libvmfs_version().
+	libvmfs_version() return without int value.
+
+	Add missing return in libvmfs_version().
+	libvmfs_version() return without int value.
+
+	Fix tiny resource leak.
+
+2024-06-14  Thomas Tsai  <tlinux.tsai@gmail.com>
+
+	Merge branch 'master' of github.com:Thomas-Tsai/partclone
+
+	update log and release 0.3.29
+
+	Merge pull request #247 from robert-scheck/bash-completion
+	Prefer bash-completion directory from pkg-config
+
+	add option --binary-prefix to display bit size in progress bar
+
+2024-06-14  Robert Scheck  <robert@fedoraproject.org>
+
+	Prefer bash-completion directory from pkg-config...
+	...with backwards compatibility for pkg-config < 0.28
+
+2024-06-13  Thomas Tsai  <tlinux.tsai@gmail.com>
+
+	Merge branch 'master' of github.com:Thomas-Tsai/partclone
+
+	update autoconf and automake for btrfs CPU target test
+
+2024-06-12  Thomas Tsai  <tlinux.tsai@gmail.com>
+
+	Merge pull request #245 from PushKK/PushKK-patch-1
+	Update ru.po
+
+2024-06-11  Thomas Tsai  <thomas@nchc.org.tw>
+
+	update test scripts
+
+	update github actions
+
+2024-06-11  Thomas Tsai  <tlinux.tsai@gmail.com>
+
+	release 0.3.28
+
+	update github action for nodejs 20
+
+	update domain test
+
+	update  btrfs to 6.8.1 and logs
+
+	update  btrfs to 6.8.1
+
+2024-06-09  Stanislav  <42420548+PushKK@users.noreply.github.com>
+
+	Update ru.po
+
+2024-05-25  Yu-Chin Tsai  <tlinux.tsai@gmail.com>
+
+	update docs
+
+2024-03-25  Thomas Tsai  <tlinux.tsai@gmail.com>
+
+	add btrfs more  detail logs
+
+2023-12-11  Thomas Tsai  <tlinux.tsai@gmail.com>
+
+	find more incompatable types
+
+	Accept the patch to fix incompatible function argument types from David Restall.
+
+2023-11-29  Thomas Tsai  <thomas@nchc.org.tw>
+
+	fix test
+
+2023-11-28  Thomas Tsai  <thomas@nchc.org.tw>
+
+	fix more exit 0
+
+	fix #241. return 0 in case of error
+
+2023-11-17  Thomas Tsai  <tlinux.tsai@gmail.com>
+
+	upgrade btrfs to v6.6.2
+
+2023-10-22  Yu-Chin Tsai  <tlinux.tsai@gmail.com>
+
+	update automake for bash completion
+
+	add bash completion script
+
 2023-10-04  Thomas Tsai  <tlinux.tsai@gmail.com>
+
+	update log, po, docs and set version 0.3.27 update configure.ac
 
 	merge partclone.imager.xml to partclone.xml
 
@@ -623,6 +754,20 @@
 2021-02-17  Thomas Tsai  <tlinux.tsai@gmail.com>
 
 	Update README.md
+
+2021-02-12  Patrick Rouleau  <pfrouleau@gmail.com>
+
+	Fix get_exec_name(): when partclone is installed, there is no '/' in argv0
+	I forgot to test the case where partclone can be found through PATH and
+	in that case argv[0] does not contains a slash.
+
+	Include the NTFS Boot Record backup in the cloned image
+	NTFS stores a copy of its Boot Record after the end of the volume, which is
+	1 block smaller than the partition. This commit updates the NTFS's totalblock
+	to include that block.
+
+	With this change, the md5sum of the restored floppy.raw is identical to
+	the md5sum of the cloned one.
 
 2021-01-06  Thomas Tsai  <tlinux.tsai@gmail.com>
 

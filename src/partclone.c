@@ -76,6 +76,8 @@ int log_y_line = 0;
 #define OPT_OFFSET_DOMAIN  1000
 #define OPT_WRITE_DIRECT_IO 1001
 #define OPT_READ_DIRECT_IO 1002
+#define OPT_BINARY_PREFIX 1003
+#define OPT_PROG_SEC 1004
 //
 //enum {
 //	OPT_OFFSET_DOMAIN = 1000
@@ -237,9 +239,10 @@ void usage(void) {
 #ifndef RESTORE
 #ifndef DD
 		"    -c,  --clone            Save to the special image format\n"
-		"    -x,  --compresscmd CMD  Start CMD as an output pipe to compress the cloned image\n"
 		"    -r,  --restore          Restore from the special image format\n"
 		"    -b,  --dev-to-dev       Local device to device copy mode\n"
+		"    -x,  --compresscmd CMD  Start CMD as an output pipe to compress the cloned image\n"
+		"    -n,  --note NOTE        Display Message Note (128 words)\n"
 #endif
 		"    -D,  --domain           Create ddrescue domain log from source device\n"
 		"         --offset_domain=X  Add offset X (bytes) to domain log values\n"
@@ -268,6 +271,8 @@ void usage(void) {
 		"    -F,  --force            Force progress\n"
 		"    -f,  --UI-fresh         Fresh times of progress\n"
 		"    -B,  --no_block_detail  Show progress message without block detail\n"
+		"         --binary-prefix    Show progress with bit size (default is MB, GB...)\n"
+		"         --prog-second      Show progress in seconds (default is minute)\n"
 		"    -z,  --buffer_size SIZE Read/write buffer size (default: %d)\n"
 #ifndef CHKIMG
 		"    -q,  --quiet            Disable progress message\n"
@@ -275,7 +280,6 @@ void usage(void) {
 		"    -T,  --btfiles          Restore block as file for ClonezillaBT\n"
 		"    -t,  --btfiles_torrent  Restore block as file for ClonezillaBT but only generate torrent\n"
 #endif
-		"    -n,  --note NOTE        Display Message Note (128 words)\n"
 		"    -v,  --version          Display partclone version\n"
 		"    -h,  --help             Display this help\n"
 		, get_exec_name(), VERSION, get_exec_name(), DEFAULT_BUFFER_SIZE);
@@ -323,8 +327,9 @@ static void save_program_name(const char* argv0) {
 	const char* last_slash = strrchr(argv0, '/');
 
 	if (last_slash != 0) {
-
 		exec_name = last_slash + 1;
+	} else {
+		exec_name = argv0;
 	}
 }
 
@@ -354,6 +359,8 @@ void parse_options(int argc, char **argv, cmd_opt* opt) {
 		{ "force",		no_argument,		NULL,   'F' },
 		{ "no_block_detail",	no_argument,		NULL,   'B' },
 		{ "buffer_size",	required_argument,	NULL,   'z' },
+		{ "binary-prefix",      no_argument,	        NULL,   OPT_BINARY_PREFIX },
+		{ "prog-second",        no_argument,	        NULL,   OPT_PROG_SEC },
 		{ "write-direct-io",	no_argument,	        NULL,   OPT_WRITE_DIRECT_IO },
 		{ "read-direct-io",	no_argument,	        NULL,   OPT_READ_DIRECT_IO },
 // not RESTORE and not CHKIMG
@@ -414,6 +421,8 @@ void parse_options(int argc, char **argv, cmd_opt* opt) {
 	opt->blockfile = 0;
         opt->write_direct_io = 0;
         opt->read_direct_io = 0;
+        opt->binary_prefix = 0;
+        opt->prog_second = 0;
 
 
 #ifdef DD
@@ -444,6 +453,12 @@ void parse_options(int argc, char **argv, cmd_opt* opt) {
 			case 'v':
 				print_version();
 				break;
+                        case OPT_PROG_SEC:
+                                opt->prog_second = 1;
+                                break;
+                        case OPT_BINARY_PREFIX:
+                                opt->binary_prefix = 1;
+                                break;
                         case OPT_WRITE_DIRECT_IO:
                                 opt->write_direct_io = 1;
                                 break;
@@ -1688,9 +1703,8 @@ int open_target(char* target, cmd_opt* opt) {
 
 	    if ((stat(target, &st_dev) == -1) || (opt->overwrite)){
 		remove_directory(target);
-		mkdir(target, 0700);
-		if ( opendir (target) == NULL) {
-		    log_mesg(0, 0, 1, debug, "%s,%s,%i: open %s error(%i)\n", __FILE__, __func__, __LINE__, target, errno);
+		if (mkdir(target, 0700) == -1) {
+		    log_mesg(0, 0, 1, debug, "%s,%s,%i: mkdir %s error(%i)\n", __FILE__, __func__, __LINE__, target, errno);
 		}
 		ret = 0;
 	    } else if (opt->torrent_only == 0) {
