@@ -17,8 +17,8 @@
  * along with libbtrfsutil.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef BTRFS_UTIL_H
-#define BTRFS_UTIL_H
+#ifndef _LIBBTRFSUTIL_BTRFSUTIL_H_
+#define _LIBBTRFSUTIL_BTRFSUTIL_H_
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -27,7 +27,7 @@
 
 #define BTRFS_UTIL_VERSION_MAJOR 1
 #define BTRFS_UTIL_VERSION_MINOR 3
-#define BTRFS_UTIL_VERSION_PATCH 0
+#define BTRFS_UTIL_VERSION_PATCH 2
 
 #ifdef __cplusplus
 extern "C" {
@@ -93,7 +93,6 @@ enum btrfs_util_error btrfs_util_sync(const char *path);
  */
 enum btrfs_util_error btrfs_util_fs_sync(const char *path)
 LIBBTRFSUTIL_ALIAS(btrfs_util_sync);
-
 
 /**
  * btrfs_util_sync_fd() - Alias of btrfs_util_fs_sync_fd(), do not use in new code.
@@ -454,7 +453,7 @@ enum btrfs_util_error btrfs_util_subvolume_get_default_fd(int fd, uint64_t *id_r
 LIBBTRFSUTIL_ALIAS(btrfs_util_get_default_subvolume_fd);
 
 /**
- * btrfs_util_set_default_subvolume() - Alias of btrfs_util_set_default_subvolume(), do not use in new code.
+ * btrfs_util_set_default_subvolume() - Alias of btrfs_util_subvolume_set_default(), do not use in new code.
  */
 enum btrfs_util_error btrfs_util_set_default_subvolume(const char *path, uint64_t id);
 
@@ -553,7 +552,7 @@ LIBBTRFSUTIL_ALIAS(btrfs_util_create_subvolume_fd);
 #define BTRFS_UTIL_CREATE_SNAPSHOT_MASK		((1U << 2) - 1)
 
 /**
- * btrfs_util_create_snapshot() - Alias of btrfs_util_snapshot_snapshot(), do not use in new code.
+ * btrfs_util_create_snapshot() - Alias of btrfs_util_subvolume_snapshot(), do not use in new code.
  */
 enum btrfs_util_error btrfs_util_create_snapshot(const char *source,
 						 const char *path, int flags,
@@ -878,7 +877,7 @@ enum btrfs_util_error btrfs_util_create_qgroup_inherit(int flags, struct btrfs_u
 
 /**
  * btrfs_util_qgroup_inherit_create() - Create a qgroup inheritance specifier
- * for btrfs_util_create_subvolume() or btrfs_util_create_snapshot().
+ * for btrfs_util_create_subvolume() or btrfs_util_subvolume_snapshot().
  * @flags: Must be zero.
  * @ret: Returned qgroup inheritance specifier.
  *
@@ -930,4 +929,4 @@ void btrfs_util_qgroup_inherit_get_groups(const struct btrfs_util_qgroup_inherit
 }
 #endif
 
-#endif /* BTRFS_UTIL_H */
+#endif /* _LIBBTRFSUTIL_BTRFSUTIL_H_ */

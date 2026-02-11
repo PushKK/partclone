@@ -16,8 +16,8 @@
 #include <time.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <math.h>
-#include <float.h>
 #include "config.h"
 #include "progress.h"
 #include "gettext.h"
@@ -117,15 +117,13 @@ static void calculate_speed(struct progress_bar *prog, unsigned long long copied
     time_t remained;
     time_t elapsed;
     char Rformated[12], Eformated[12];
-    char speed_unit[] = "    ";
     struct tm *Rtm, *Etm;
-    uint64_t gibyte = pow(2,30);
-    uint64_t mibyte = pow(2,20);
-    uint64_t kibyte = pow(2,10);
-    uint64_t gbyte = 1000000000.0;
-    uint64_t mbyte = 1000000;
-    uint64_t kbyte = 1000;
-    int spflen = 0;
+    uint64_t gibyte = UINT64_C(1) << 30;
+    uint64_t mibyte = UINT64_C(1) << 20;
+    uint64_t kibyte = UINT64_C(1) << 10;
+    uint64_t gbyte = UINT64_C(1000000000);
+    uint64_t mbyte = UINT64_C(1000000);
+    uint64_t kbyte = UINT64_C(1000);
     int prefered_bits_size = prog->binary_prefix;
 
     percent  = prog->unit * copied;
@@ -149,40 +147,32 @@ static void calculate_speed(struct progress_bar *prog, unsigned long long copied
 
         if (speed >= gibyte){
             dspeed = (double)speed / (double)gibyte;
-            strncpy(speed_unit, "GiB", 3);
-            strncpy(prog_stat->speed_unit, speed_unit, 3);
+            snprintf(prog_stat->speed_unit, sizeof(prog_stat->speed_unit), "%s", "GiB");
         }else if (speed >= mibyte){
             dspeed = (double)speed / (double)mibyte;
-            strncpy(speed_unit, "MiB", 3);
-            strncpy(prog_stat->speed_unit, speed_unit, 3);
+            snprintf(prog_stat->speed_unit, sizeof(prog_stat->speed_unit), "%s", "MiB");
         }else if (speed >= kbyte){
             dspeed = (double)speed / (double)kibyte;
-            strncpy(speed_unit, "KiB", 3);
-            strncpy(prog_stat->speed_unit, speed_unit, 3);
+            snprintf(prog_stat->speed_unit, sizeof(prog_stat->speed_unit), "%s", "KiB");
         }else{
             dspeed = speed;
-            strncpy(speed_unit, "byte", 5);
-            strncpy(prog_stat->speed_unit, speed_unit, 5);
+            snprintf(prog_stat->speed_unit, sizeof(prog_stat->speed_unit), "%s", "byte");
         }
 
     } else {
 
         if (speed >= gbyte){
             dspeed = (double)speed / (double)gbyte;
-            strncpy(speed_unit, "GB", 3);
-            strncpy(prog_stat->speed_unit, speed_unit, 3);
+            snprintf(prog_stat->speed_unit, sizeof(prog_stat->speed_unit), "%s", "GB");
         }else if (speed >= mbyte){
             dspeed = (double)speed / (double)mbyte;
-            strncpy(speed_unit, "MB", 3);
-            strncpy(prog_stat->speed_unit, speed_unit, 3);
+            snprintf(prog_stat->speed_unit, sizeof(prog_stat->speed_unit), "%s", "MB");
         }else if (speed >= kbyte){
             dspeed = (double)speed / (double)kbyte;
-            strncpy(speed_unit, "KB", 3);
-            strncpy(prog_stat->speed_unit, speed_unit, 3);
+            snprintf(prog_stat->speed_unit, sizeof(prog_stat->speed_unit), "%s", "KB");
         }else{
             dspeed = speed;
-            strncpy(speed_unit, "byte", 5);
-            strncpy(prog_stat->speed_unit, speed_unit, 5);
+            snprintf(prog_stat->speed_unit, sizeof(prog_stat->speed_unit), "%s", "byte");
         }
     }
 
@@ -192,18 +182,19 @@ static void calculate_speed(struct progress_bar *prog, unsigned long long copied
 
     if (done != 1){
         remained = (time_t)((elapsed/percent*100) - elapsed);
-        spflen = 0;
 	if ((unsigned int)remained > 86400){
-	    spflen = snprintf(NULL, 0, " > %3i hrs ", ((int)remained/3600));
-	    snprintf(Rformated, spflen, " > %3i hrs ", ((int)remained/3600));
+	    //spflen = snprintf(NULL, 0, " > %3i hrs ", ((int)remained/3600));
+	    //snprintf(Rformated, spflen, " > %3i hrs ", ((int)remained/3600));
+	    snprintf(Rformated, sizeof(Rformated), " > %3d hrs", ((int)remained/3600%1000));
 	}else{
 	    Rtm = gmtime(&remained);
 	    strftime(Rformated, sizeof(Rformated), format, Rtm);
 	}
 
 	if ((unsigned int)elapsed > 86400){
-	    spflen = snprintf(NULL, 0, " > %3i hrs ", ((int)elapsed/3600));
-	    snprintf(Eformated, spflen, " > %3i hrs ", ((int)elapsed/3600));
+	    //spflen = snprintf(NULL, 0, " > %3i hrs ", ((int)elapsed/3600));
+	    //snprintf(Eformated, spflen, " > %3i hrs ", ((int)elapsed/3600));
+	    snprintf(Eformated, sizeof(Eformated), " > %3d hrs", ((int)elapsed/3600%1000));
 	}else{
 	    Etm = gmtime(&elapsed);
 	    strftime(Eformated, sizeof(Eformated), format, Etm);
@@ -216,8 +207,9 @@ static void calculate_speed(struct progress_bar *prog, unsigned long long copied
 	strftime(Rformated, sizeof(Rformated), format, Rtm);
 
 	if ((unsigned int)elapsed > 86400){
-	    spflen = snprintf(NULL, 0, " > %3i hrs ", ((int)elapsed/3600));
-	    snprintf(Eformated, spflen, " > %3i hrs ", ((int)elapsed/3600));
+	    //spflen = snprintf(NULL, 0, " > %3i hrs ", ((int)elapsed/3600));
+	    //snprintf(Eformated, spflen, " > %3i hrs ", ((int)elapsed/3600));
+	    snprintf(Eformated, sizeof(Eformated), " > %3d hrs", ((int)elapsed/3600%1000));
 	}else{
 	    Etm = gmtime(&elapsed);
 	    strftime(Eformated, sizeof(Eformated), format, Etm);
@@ -243,22 +235,30 @@ extern void progress_update(struct progress_bar *prog, unsigned long long copied
 	bindtextdomain(PACKAGE, LOCALEDIR);
 	textdomain(PACKAGE);
 
-	fprintf(stderr, _("\r%80c\rElapsed: %s, Remaining: %s, Completed: %6.2f%%"), clear_buf, prog_stat.Eformated, prog_stat.Rformated, prog_stat.percent);
+	fprintf(stderr, "\r%80c\r", clear_buf);
+	fprintf(stderr, _("Elapsed: %s, Remaining: %s, Completed: %6.2f%%"), prog_stat.Eformated, prog_stat.Rformated, prog_stat.percent);
 
 	if((prog->flag == IO) || (prog->flag == NO_BLOCK_DETAIL))
 	    fprintf(stderr, _(", %6.2f%s/%s,"), prog_stat.speed, prog_stat.speed_unit, prog->time_unit);
-	if(prog->flag == IO)
-	    fprintf(stderr, _("\n\r%80c\rCurrent block: %10Lu, Total block: %10Lu, Complete: %6.2f%%%s\r"), clear_buf, current, prog->total, prog_stat.total_percent, "\x1b[A");
+	if(prog->flag == IO){
+	    fprintf(stderr, "\n\r%80c\r", clear_buf);
+	    fprintf(stderr, _("Current block: %10Lu, Total block: %10Lu, Complete: %6.2f%%%s"), current, prog->total, prog_stat.total_percent, "\x1b[A");
+	    fprintf(stderr, "\r");
+	}
     } else {
 	setlocale(LC_ALL, "");
 	bindtextdomain(PACKAGE, LOCALEDIR);
 	textdomain(PACKAGE);
 
-	fprintf(stderr, _("\r%80c\rElapsed: %s, Remaining: %s, Completed: 100.00%%"), clear_buf, prog_stat.Eformated, prog_stat.Rformated);
+	fprintf(stderr, "\r%80c\r", clear_buf);
+	fprintf(stderr, _("Elapsed: %s, Remaining: %s, Completed: 100.00%%"), prog_stat.Eformated, prog_stat.Rformated);
 	if((prog->flag == IO) || (prog->flag == NO_BLOCK_DETAIL))
 	    fprintf(stderr, _(", Rate: %6.2f%s/%s,"), prog_stat.speed, prog_stat.speed_unit, prog->time_unit);
-	if(prog->flag == IO)
-	    fprintf(stderr, _("\n\r%80c\rCurrent block: %10Lu, Total block: %10Lu, Complete: 100.00%%\r"), clear_buf, current, prog->total);
+	if(prog->flag == IO){
+	    fprintf(stderr, "\n\r%80c\r", clear_buf);
+	    fprintf(stderr, _("Current block: %10Lu, Total block: %10Lu, Complete: 100.00%%"), current, prog->total);
+	    fprintf(stderr, "\r");
+	}
 
         fprintf(stderr, _("\nTotal Time: %s, "), prog_stat.Eformated);
 	if(prog->flag == IO)

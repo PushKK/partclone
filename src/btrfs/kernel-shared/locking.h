@@ -5,7 +5,6 @@
 
 #include "kerncompat.h"
 #include <stdbool.h>
-#include "kernel-lib/bitops.h"
 
 struct extent_buffer;
 
@@ -212,7 +211,7 @@ static inline void btrfs_tree_unlock_rw(struct extent_buffer *eb, int rw)
 
 struct btrfs_drew_lock {
 	atomic_t readers;
-	struct percpu_counter writers;
+	atomic_t writers;
 	wait_queue_head_t pending_writers;
 	wait_queue_head_t pending_readers;
 };

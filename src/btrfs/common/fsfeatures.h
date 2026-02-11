@@ -20,6 +20,7 @@
 #include "kerncompat.h"
 #include <stdio.h>
 #include "kernel-lib/sizes.h"
+#include "kernel-shared/uapi/btrfs.h"
 
 #define BTRFS_MKFS_DEFAULT_NODE_SIZE SZ_16K
 
@@ -68,8 +69,7 @@ static const struct btrfs_mkfs_features btrfs_convert_allowed_features = {
 			   BTRFS_FEATURE_INCOMPAT_BIG_METADATA |
 			   BTRFS_FEATURE_INCOMPAT_EXTENDED_IREF |
 			   BTRFS_FEATURE_INCOMPAT_SKINNY_METADATA |
-			   BTRFS_FEATURE_INCOMPAT_NO_HOLES |
-			   BTRFS_FEATURE_INCOMPAT_RAID_STRIPE_TREE,
+			   BTRFS_FEATURE_INCOMPAT_NO_HOLES,
 	.runtime_flags   = BTRFS_FEATURE_RUNTIME_QUOTA,
 };
 

@@ -60,25 +60,6 @@ static int discard_range(int fd, u64 start, u64 len)
 	return 0;
 }
 
-static int discard_supported(const char *device)
-{
-	int ret;
-	char buf[128] = {};
-
-	ret = device_get_queue_param(device, "discard_granularity", buf, sizeof(buf));
-	if (ret == 0) {
-		pr_verbose(3, "cannot read discard_granularity for %s\n", device);
-		return 0;
-	} else {
-		if (atoi(buf) == 0) {
-			pr_verbose(3, "%s: discard_granularity %s", device, buf);
-			return 0;
-		}
-	}
-
-	return 1;
-}
-
 /*
  * Discard blocks in the given range in 1G chunks, the process is interruptible
  */
@@ -97,6 +78,29 @@ int device_discard_blocks(int fd, u64 start, u64 len)
 	}
 
 	return 0;
+}
+
+static void prepare_discard_device(const char *filename, int fd, u64 byte_count, unsigned opflags)
+{
+	u64 cur = 0;
+
+	while (cur < byte_count) {
+		/* 1G granularity */
+		u64 chunk_size = (cur == 0) ? SZ_1M : min_t(u64, byte_count - cur, SZ_1G);
+		int ret;
+
+		ret = discard_range(fd, cur, chunk_size);
+		if (ret)
+			return;
+		/*
+		 * The first range discarded successfully, meaning the device supports
+		 * discard.
+		 */
+		if (opflags & PREP_DEVICE_VERBOSE && cur == 0)
+			printf("Performing full device TRIM %s (%s) ...\n",
+			       filename, pretty_size(byte_count));
+		cur += chunk_size;
+	}
 }
 
 /*
@@ -222,11 +226,11 @@ out:
  * - reset zones
  * - delete end of the device
  */
-int btrfs_prepare_device(int fd, const char *file, u64 *block_count_ret,
-		u64 max_block_count, unsigned opflags)
+int btrfs_prepare_device(int fd, const char *file, u64 *byte_count_ret,
+			 u64 max_byte_count, unsigned opflags)
 {
 	struct btrfs_zoned_device_info *zinfo = NULL;
-	u64 block_count;
+	u64 byte_count;
 	struct stat st;
 	int i, ret;
 
@@ -236,13 +240,14 @@ int btrfs_prepare_device(int fd, const char *file, u64 *block_count_ret,
 		return 1;
 	}
 
-	block_count = device_get_partition_size_fd_stat(fd, &st);
-	if (block_count == 0) {
-		error("unable to determine size of %s", file);
+	ret = device_get_partition_size_fd_stat(fd, &st, &byte_count);
+	if (ret < 0) {
+		errno = -ret;
+		error("unable to determine size of %s: %m", file);
 		return 1;
 	}
-	if (max_block_count)
-		block_count = min(block_count, max_block_count);
+	if (max_byte_count)
+		byte_count = min(byte_count, max_byte_count);
 
 	if (opflags & PREP_DEVICE_ZONED) {
 		ret = btrfs_get_zone_info(fd, file, &zinfo);
@@ -254,40 +259,35 @@ int btrfs_prepare_device(int fd, const char *file, u64 *block_count_ret,
 
 		if (!zinfo->emulated) {
 			if (opflags & PREP_DEVICE_VERBOSE)
-				printf("Resetting device zones %s (%u zones) ...\n",
-				       file, zinfo->nr_zones);
+				printf("Resetting device zones %s (%llu zones) ...\n",
+				       file, byte_count / zinfo->zone_size);
 			/*
 			 * We cannot ignore zone reset errors for a zoned block
 			 * device as this could result in the inability to write
 			 * to non-empty sequential zones of the device.
 			 */
-			if (btrfs_reset_all_zones(fd, zinfo)) {
-				error("zoned: failed to reset device '%s' zones: %m",
-				      file);
+			ret = btrfs_reset_zones(fd, zinfo, byte_count);
+			if (ret) {
+				if (ret == EBUSY) {
+					error("zoned: device '%s' contains an active zone outside of fs range", file);
+					error("zoned: btrfs needs full control of active zones");
+				} else {
+					error("zoned: failed to reset device '%s' zones: %m", file);
+				}
 				goto err;
 			}
 		}
 	} else if (opflags & PREP_DEVICE_DISCARD) {
-		/*
-		 * We intentionally ignore errors from the discard ioctl.  It
-		 * is not necessary for the mkfs functionality but just an
-		 * optimization.
-		 */
-		if (discard_supported(file)) {
-			if (opflags & PREP_DEVICE_VERBOSE)
-				printf("Performing full device TRIM %s (%s) ...\n",
-						file, pretty_size(block_count));
-			device_discard_blocks(fd, 0, block_count);
-		}
+		prepare_discard_device(file, fd, byte_count, opflags);
 	}
 
-	ret = zero_dev_clamped(fd, zinfo, 0, ZERO_DEV_BYTES, block_count);
+	ret = zero_dev_clamped(fd, zinfo, 0, ZERO_DEV_BYTES, byte_count);
 	for (i = 0 ; !ret && i < BTRFS_SUPER_MIRROR_MAX; i++)
 		ret = zero_dev_clamped(fd, zinfo, btrfs_sb_offset(i),
-				       BTRFS_SUPER_INFO_SIZE, block_count);
+				       BTRFS_SUPER_INFO_SIZE, byte_count);
 	if (!ret && (opflags & PREP_DEVICE_ZERO_END))
-		ret = zero_dev_clamped(fd, zinfo, block_count - ZERO_DEV_BYTES,
-				       ZERO_DEV_BYTES, block_count);
+		ret = zero_dev_clamped(fd, zinfo, byte_count - ZERO_DEV_BYTES,
+				       ZERO_DEV_BYTES, byte_count);
 
 	if (ret < 0) {
 		errno = -ret;
@@ -302,7 +302,7 @@ int btrfs_prepare_device(int fd, const char *file, u64 *block_count_ret,
 	}
 
 	free(zinfo);
-	*block_count_ret = block_count;
+	*byte_count_ret = byte_count;
 	return 0;
 
 err:
@@ -310,34 +310,20 @@ err:
 	return 1;
 }
 
-u64 device_get_partition_size_fd_stat(int fd, const struct stat *st)
+int device_get_partition_size_fd_stat(int fd, const struct stat *st, u64 *size_ret)
 {
-	u64 size;
-
-	if (S_ISREG(st->st_mode))
-		return st->st_size;
-	if (!S_ISBLK(st->st_mode))
+	if (S_ISREG(st->st_mode)) {
+		*size_ret = st->st_size;
 		return 0;
-	if (ioctl(fd, BLKGETSIZE64, &size) >= 0)
-		return size;
-
+	}
+	if (!S_ISBLK(st->st_mode))
+		return -EINVAL;
+	if (ioctl(fd, BLKGETSIZE64, size_ret) < 0)
+		return -errno;
 	return 0;
 }
 
-/*
- * Read partition size using the low-level ioctl
- */
-u64 device_get_partition_size_fd(int fd)
-{
-	u64 result;
-
-	if (ioctl(fd, BLKGETSIZE64, &result) < 0)
-		return 0;
-
-	return result;
-}
-
-static u64 device_get_partition_size_sysfs(const char *dev)
+static int device_get_partition_size_sysfs(const char *dev, u64 *size_ret)
 {
 	int ret;
 	char path[PATH_MAX] = {};
@@ -349,45 +335,45 @@ static u64 device_get_partition_size_sysfs(const char *dev)
 
 	name = realpath(dev, path);
 	if (!name)
-		return 0;
+		return -errno;
 	name = path_basename(path);
 
 	ret = path_cat3_out(sysfs, "/sys/class/block", name, "size");
 	if (ret < 0)
-		return 0;
+		return ret;
 	sysfd = open(sysfs, O_RDONLY);
 	if (sysfd < 0)
-		return 0;
+		return -errno;
 	ret = sysfs_read_file(sysfd, sizebuf, sizeof(sizebuf));
-	if (ret < 0) {
-		close(sysfd);
-		return 0;
-	}
+	close(sysfd);
+	if (ret < 0)
+		return ret;
 	errno = 0;
 	size = strtoull(sizebuf, NULL, 10);
-	if (size == ULLONG_MAX && errno == ERANGE) {
-		close(sysfd);
-		return 0;
-	}
-	close(sysfd);
-	return size;
+	if (size == ULLONG_MAX && errno == ERANGE)
+		return -ERANGE;
+	/* Extra overflow check. */
+	if (size > ULLONG_MAX >> SECTOR_SHIFT)
+		return -ERANGE;
+	*size_ret = size << SECTOR_SHIFT;
+	return 0;
 }
 
-u64 device_get_partition_size(const char *dev)
+int device_get_partition_size(const char *dev, u64 *size_ret)
 {
 	u64 result;
 	int fd = open(dev, O_RDONLY);
 
 	if (fd < 0)
-		return device_get_partition_size_sysfs(dev);
+		return device_get_partition_size_sysfs(dev, size_ret);
 
 	if (ioctl(fd, BLKGETSIZE64, &result) < 0) {
 		close(fd);
-		return 0;
+		return -errno;
 	}
 	close(fd);
-
-	return result;
+	*size_ret = result;
+	return 0;
 }
 
 /*
@@ -635,4 +621,16 @@ ssize_t btrfs_direct_pwrite(int fd, const void *buf, size_t count, off_t offset)
 
 	free(bounce_buf);
 	return ret;
+}
+
+/* Sort devices by devid, ascending */
+int cmp_device_id(void *priv, struct list_head *a, struct list_head *b)
+{
+	const struct btrfs_device *da = list_entry(a, struct btrfs_device,
+			dev_list);
+	const struct btrfs_device *db = list_entry(b, struct btrfs_device,
+			dev_list);
+
+	return da->devid < db->devid ? -1 :
+		da->devid > db->devid ? 1 : 0;
 }

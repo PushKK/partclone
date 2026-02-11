@@ -1,3 +1,14 @@
+2026-01-08  gettextize  <bug-gnu-gettext@gnu.org>
+
+	* Makefile.in.in: Upgrade to gettext-0.21.
+	* Rules-quot: Upgrade to gettext-0.21.
+	* boldquot.sed: Upgrade to gettext-0.21.
+	* en@boldquot.header: Upgrade to gettext-0.21.
+	* en@quot.header: Upgrade to gettext-0.21.
+	* insert-header.sed: New file, from gettext-0.21.
+	* quot.sed: Upgrade to gettext-0.21.
+	* remove-potcdate.sed: New file, from gettext-0.21.
+
 2007-11-01  gettextize  <bug-gnu-gettext@gnu.org>
 
 	* Makefile.in.in: New file, from gettext-0.16.1.

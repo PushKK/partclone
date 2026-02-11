@@ -6,17 +6,17 @@
 #include "kerncompat.h"
 #include <stdbool.h>
 #include <stddef.h>
-#include "kernel-lib/bitops.h"
 #include "kernel-shared/ctree.h"
 #include "kernel-shared/uapi/btrfs_tree.h"
 #include "kernel-shared/accessors.h"
+#include "kernel-shared/compression.h"
 
+struct extent_map;
 struct bio;
 struct inode;
+struct btrfs_trans_handle;
 struct btrfs_ordered_sum;
 struct btrfs_inode;
-struct btrfs_trans_handle;
-struct extent_map;
 struct extent_buffer;
 struct list_head;
 
@@ -53,7 +53,7 @@ static inline u32 btrfs_file_extent_calc_inline_size(u32 datasize)
 
 int btrfs_del_csums(struct btrfs_trans_handle *trans,
 		    struct btrfs_root *root, u64 bytenr, u64 len);
-blk_status_t btrfs_lookup_bio_sums(struct inode *inode, struct bio *bio, u8 *dst);
+int btrfs_lookup_bio_sums(struct btrfs_bio *bbio);
 int btrfs_insert_hole_extent(struct btrfs_trans_handle *trans,
 			     struct btrfs_root *root, u64 objectid, u64 pos,
 			     u64 num_bytes);
@@ -64,14 +64,19 @@ int btrfs_lookup_file_extent(struct btrfs_trans_handle *trans,
 int btrfs_csum_file_blocks(struct btrfs_trans_handle *trans,
 			   struct btrfs_root *root,
 			   struct btrfs_ordered_sum *sums);
-blk_status_t btrfs_csum_one_bio(struct btrfs_inode *inode, struct bio *bio,
-				u64 offset, bool one_ordered);
+int btrfs_csum_one_bio(struct btrfs_bio *bbio);
+int btrfs_alloc_dummy_sum(struct btrfs_bio *bbio);
 int btrfs_lookup_csums_range(struct btrfs_root *root, u64 start, u64 end,
 			     struct list_head *list, int search_commit,
 			     bool nowait);
+int btrfs_lookup_csums_list(struct btrfs_root *root, u64 start, u64 end,
+			    struct list_head *list, bool nowait);
+int btrfs_lookup_csums_bitmap(struct btrfs_root *root, struct btrfs_path *path,
+			      u64 start, u64 end, u8 *csum_buf,
+			      unsigned long *csum_bitmap);
 void btrfs_extent_item_to_extent_map(struct btrfs_inode *inode,
 				     const struct btrfs_path *path,
-				     struct btrfs_file_extent_item *fi,
+				     const struct btrfs_file_extent_item *fi,
 				     struct extent_map *em);
 int btrfs_inode_clear_file_extent_range(struct btrfs_inode *inode, u64 start,
 					u64 len);
@@ -85,12 +90,36 @@ u64 btrfs_file_extent_end(const struct btrfs_path *path);
  */
 int btrfs_insert_file_extent(struct btrfs_trans_handle *trans,
 			     struct btrfs_root *root,
-			     u64 objectid, u64 pos, u64 offset,
-			     u64 disk_num_bytes, u64 num_bytes);
+			     u64 ino, u64 file_pos,
+			     struct btrfs_file_extent_item *stack_fi);
 int btrfs_csum_file_block(struct btrfs_trans_handle *trans, u64 logical,
 			  u64 csum_objectid, u32 csum_type, const char *data);
+struct btrfs_csum_item *
+btrfs_lookup_csum(struct btrfs_trans_handle *trans,
+		  struct btrfs_root *root,
+		  struct btrfs_path *path,
+		  u64 bytenr, u64 csum_objectid, u16 csum_type, int cow);
 int btrfs_insert_inline_extent(struct btrfs_trans_handle *trans,
 			       struct btrfs_root *root, u64 objectid,
-			       u64 offset, const char *buffer, size_t size);
+			       u64 offset, const char *buffer, size_t size,
+			       enum btrfs_compression_type comp, u64 ram_bytes);
+/*
+ * For symlink we allow up to PATH_MAX - 1 (PATH_MAX includes the terminating NUL,
+ * but fs doesn't store that terminating NUL).
+ *
+ * But for inlined data extents, the up limit is sectorsize - 1 (inclusive), or a
+ * regular extent should be created instead.
+ */
+static inline u32 btrfs_symlink_max_size(struct btrfs_fs_info *fs_info)
+{
+	return min_t(u32, BTRFS_MAX_INLINE_DATA_SIZE(fs_info),
+		     PATH_MAX - 1);
+}
+
+static inline u32 btrfs_data_inline_max_size(struct btrfs_fs_info *fs_info)
+{
+	return min_t(u32, BTRFS_MAX_INLINE_DATA_SIZE(fs_info),
+		     fs_info->sectorsize - 1);
+}
 
 #endif

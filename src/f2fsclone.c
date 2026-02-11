@@ -13,6 +13,8 @@
 
 #include <stdio.h>
 #include <libgen.h>
+#include <time.h>
+#include "f2fs/f2fs_fs.h"
 #include "f2fs/fsck.h"
 
 #include "partclone.h"
@@ -20,44 +22,50 @@
 #include "progress.h"
 #include "fs_common.h"
 
-struct f2fs_fsck gfsck = {
-    .sbi.fsck = &gfsck,
-};
-
-struct f2fs_sb_info *sbi = &gfsck.sbi;
-extern struct f2fs_configuration config;
+struct f2fs_fsck gfsck;
+struct f2fs_sb_info *sbi;
 
 /// open device
 static void fs_open(char* device){
 
     int ret = 0;
-    f2fs_init_configuration(&config);
-    config.device_name = device;
 
+    f2fs_init_configuration();
+    c.devices[0].path = device;
+    //FS only on RO mounted device
+    c.force = 1;
+    c.ro = 1;
+    c.fix_on = 0; 
+    c.auto_fix = 0;
+    if (fs_opt.debug >= 1){
+        c.dbg_lv = fs_opt.debug - 1;
+    } else {
+        c.dbg_lv = fs_opt.debug;
+    }
 
-    if (f2fs_dev_is_umounted(&config) < 0)
+    memset(&gfsck, 0, sizeof(gfsck)); 
+    gfsck.sbi.fsck = &gfsck; 
+    sbi = &gfsck.sbi; 
+
+    if (f2fs_devs_are_umounted() < 0)
 	log_mesg(0, 1, 1, fs_opt.debug, "%s: f2fs_dev_is_umounted\n", __FILE__);
 
     /* Get device */
-    if (f2fs_get_device_info(&config) < 0)
+    if (f2fs_get_device_info() < 0)
 	log_mesg(0, 1, 1, fs_opt.debug, "%s: f2fs_get_device_info fail\n", __FILE__);
 
     if (f2fs_do_mount(sbi) < 0)
 	log_mesg(0, 1, 1, fs_opt.debug, "%s: f2fs_do_mount fail\n", __FILE__);
 
-    ret = fsck_init(sbi);
+    fsck_init(sbi);
     if (ret < 0)
 	log_mesg(0, 1, 1, fs_opt.debug, "%s: fsck_init init fail\n", __FILE__);
-
-    fsck_chk_orphan_node(sbi);
-
 }
 
 /// close device
 static void fs_close(){
-
-    fsck_free(sbi);
     f2fs_do_umount(sbi);
+    fsck_free(sbi);
 }
 
 ///  readbitmap - read bitmap
@@ -122,7 +130,9 @@ extern void read_super_blocks(char* device, file_system_info* fs_info)
     fs_info->totalblock  = sb->block_count;
     fs_info->usedblocks  = (sb->segment_count-cp->free_segment_count)*DEFAULT_BLOCKS_PER_SEGMENT;
     fs_info->superBlockUsedBlocks = fs_info->usedblocks;
-    fs_info->device_size = config.total_sectors*config.sector_size;
+    fs_info->device_size = c.total_sectors*c.sector_size;
+    log_mesg(2, 0, 0, fs_opt.debug, "%s: block_size %lld \n", __FILE__, fs_info->block_size );
     fs_close();
+
 }
 

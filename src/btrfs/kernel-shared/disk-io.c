@@ -162,8 +162,7 @@ static void print_tree_block_error(struct btrfs_fs_info *fs_info,
 	}
 }
 
-int btrfs_csum_data(struct btrfs_fs_info *fs_info, u16 csum_type, const u8 *data,
-		    u8 *out, size_t len)
+int btrfs_csum_data(u16 csum_type, const u8 *data, u8 *out, size_t len)
 {
 	memset(out, 0, BTRFS_CSUM_SIZE);
 
@@ -191,8 +190,7 @@ static int __csum_tree_block_size(struct extent_buffer *buf, u16 csum_size,
 	u32 len;
 
 	len = buf->len - BTRFS_CSUM_SIZE;
-	btrfs_csum_data(buf->fs_info, csum_type, (u8 *)buf->data + BTRFS_CSUM_SIZE,
-			result, len);
+	btrfs_csum_data(csum_type, (u8 *)buf->data + BTRFS_CSUM_SIZE, result, len);
 
 	if (verify) {
 		if (buf->fs_info && buf->fs_info->skip_csum_check) {
@@ -1770,11 +1768,17 @@ int btrfs_check_super(struct btrfs_super_block *sb, unsigned sbflags)
 	}
 	csum_size = btrfs_super_csum_size(sb);
 
-	btrfs_csum_data(NULL, csum_type, (u8 *)sb + BTRFS_CSUM_SIZE,
+	btrfs_csum_data(csum_type, (u8 *)sb + BTRFS_CSUM_SIZE,
 			result, BTRFS_SUPER_INFO_SIZE - BTRFS_CSUM_SIZE);
 
-	if (memcmp(result, sb->csum, csum_size)) {
-		error("superblock checksum mismatch");
+	if (memcmp(result, sb->csum, csum_size) != 0) {
+		char found[BTRFS_CSUM_STRING_LEN];
+		char wanted[BTRFS_CSUM_STRING_LEN];
+
+		btrfs_format_csum(csum_type, result, found);
+		btrfs_format_csum(csum_type, (u8 *)sb->csum, wanted);
+
+		error("superblock checksum mismatch: wanted %s found %s", wanted, found);
 		return -EIO;
 	}
 	if (btrfs_super_root_level(sb) >= BTRFS_MAX_LEVEL) {
@@ -1816,13 +1820,10 @@ int btrfs_check_super(struct btrfs_super_block *sb, unsigned sbflags)
 		error("nodesize unaligned: %u", btrfs_super_nodesize(sb));
 		goto error_out;
 	}
-	if (btrfs_super_sectorsize(sb) < 4096) {
-		error("sectorsize too small: %u < 4096",
-			btrfs_super_sectorsize(sb));
-		goto error_out;
-	}
-	if (!IS_ALIGNED(btrfs_super_sectorsize(sb), 4096)) {
-		error("sectorsize unaligned: %u", btrfs_super_sectorsize(sb));
+	if (!is_power_of_2(btrfs_super_sectorsize(sb)) ||
+	    btrfs_super_sectorsize(sb) < BTRFS_MIN_BLOCKSIZE ||
+	    btrfs_super_sectorsize(sb) > BTRFS_MAX_METADATA_BLOCKSIZE) {
+		error("invalid sectorsize: %u", btrfs_super_sectorsize(sb));
 		goto error_out;
 	}
 	if (btrfs_super_total_bytes(sb) == 0) {
@@ -2031,7 +2032,7 @@ static int write_dev_supers(struct btrfs_fs_info *fs_info,
 	}
 	if (fs_info->super_bytenr != BTRFS_SUPER_INFO_OFFSET) {
 		btrfs_set_super_bytenr(sb, fs_info->super_bytenr);
-		btrfs_csum_data(fs_info, csum_type, (u8 *)sb + BTRFS_CSUM_SIZE,
+		btrfs_csum_data(csum_type, (u8 *)sb + BTRFS_CSUM_SIZE,
 				result, BTRFS_SUPER_INFO_SIZE - BTRFS_CSUM_SIZE);
 		memcpy(&sb->csum[0], result, BTRFS_CSUM_SIZE);
 
@@ -2064,7 +2065,7 @@ static int write_dev_supers(struct btrfs_fs_info *fs_info,
 
 		btrfs_set_super_bytenr(sb, bytenr);
 
-		btrfs_csum_data(fs_info, csum_type, (u8 *)sb + BTRFS_CSUM_SIZE,
+		btrfs_csum_data(csum_type, (u8 *)sb + BTRFS_CSUM_SIZE,
 				result, BTRFS_SUPER_INFO_SIZE - BTRFS_CSUM_SIZE);
 		memcpy(&sb->csum[0], result, BTRFS_CSUM_SIZE);
 
@@ -2342,6 +2343,45 @@ static bool is_global_root(struct btrfs_root *root)
 		return true;
 	return false;
 }
+
+int btrfs_clear_tree(struct btrfs_trans_handle *trans,
+		     struct btrfs_root *root)
+{
+	struct btrfs_path *path;
+	struct btrfs_key key;
+	struct extent_buffer *leaf = NULL;
+	int ret;
+	int nr = 0;
+
+	path = btrfs_alloc_path();
+	if (!path)
+		return -ENOMEM;
+
+	key.objectid = 0;
+	key.offset = 0;
+	key.type = 0;
+
+	while (1) {
+		ret = btrfs_search_slot(trans, root, &key, path, -1, 1);
+		if (ret < 0)
+			goto out;
+		leaf = path->nodes[0];
+		nr = btrfs_header_nritems(leaf);
+		if (!nr)
+			break;
+		path->slots[0] = 0;
+		ret = btrfs_del_items(trans, root, path, 0, nr);
+		if (ret)
+			goto out;
+
+		btrfs_release_path(path);
+	}
+	ret = 0;
+out:
+	btrfs_free_path(path);
+	return ret;
+}
+
 int btrfs_delete_and_free_root(struct btrfs_trans_handle *trans,
 			       struct btrfs_root *root)
 {
@@ -2369,12 +2409,12 @@ int btrfs_delete_and_free_root(struct btrfs_trans_handle *trans,
 }
 
 struct btrfs_root *btrfs_create_tree(struct btrfs_trans_handle *trans,
-				     struct btrfs_fs_info *fs_info,
 				     struct btrfs_key *key)
 {
-	struct extent_buffer *leaf;
+	struct btrfs_fs_info *fs_info = trans->fs_info;
 	struct btrfs_root *tree_root = fs_info->tree_root;
 	struct btrfs_root *root;
+	struct extent_buffer *leaf;
 	int ret = 0;
 
 	root = kzalloc(sizeof(*root), GFP_KERNEL);

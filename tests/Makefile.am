@@ -1,3 +1,4 @@
+AUTOMAKE_OPTIONS = serial-tests
 TESTS =  dd.test
 
 if ENABLE_FS_TEST
@@ -19,9 +20,9 @@ if ENABLE_REISERFS
 TESTS += reiserfs.test
 endif
 
-#if ENABLE_REISER4
+if ENABLE_REISER4
 TESTS += reiser4.test
-#endif
+endif
 
 if ENABLE_HFSP
 TESTS += hfsplus.test
@@ -78,7 +79,7 @@ TESTS += note.test
 TESTS += imager.test
 TESTS += domain.test
 TESTS += checksum.test
-TESTS += failmbr
 endif
 
 CLEANFILES = floppy*
+MAINTAINERCLEANFILES = Makefile.in

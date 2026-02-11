@@ -1135,6 +1135,7 @@ int btrfs_add_device(struct btrfs_trans_handle *trans,
 	int ret;
 	struct btrfs_path *path;
 	struct btrfs_dev_item *dev_item;
+	struct btrfs_dev_stats_item *dev_stats;
 	struct extent_buffer *leaf;
 	struct btrfs_key key;
 	struct btrfs_root *root = fs_info->chunk_root;
@@ -1149,6 +1150,7 @@ int btrfs_add_device(struct btrfs_trans_handle *trans,
 	if (ret)
 		goto out;
 
+	/* Add DEV_ITEM. */
 	key.objectid = BTRFS_DEV_ITEMS_OBJECTID;
 	key.type = BTRFS_DEV_ITEM_KEY;
 	key.offset = free_devid;
@@ -1182,6 +1184,27 @@ int btrfs_add_device(struct btrfs_trans_handle *trans,
 			    BTRFS_UUID_SIZE);
 	btrfs_mark_buffer_dirty(leaf);
 	fs_info->fs_devices->total_rw_bytes += device->total_bytes;
+
+	btrfs_release_path(path);
+
+	/* Add DEV STATS item. */
+	key.objectid = BTRFS_DEV_STATS_OBJECTID;
+	key.type = BTRFS_PERSISTENT_ITEM_KEY;
+	key.offset = free_devid;
+
+	ret = btrfs_insert_empty_item(trans, fs_info->dev_root, path, &key,
+				      sizeof(*dev_stats));
+	if (ret)
+		goto out;
+
+	leaf = path->nodes[0];
+	dev_stats = btrfs_item_ptr(leaf, path->slots[0], struct btrfs_dev_stats_item);
+
+	for (int i = 0; i < BTRFS_DEV_STAT_VALUES_MAX; i++)
+		btrfs_set_dev_stats_value(leaf, dev_stats, i, 0);
+
+	btrfs_mark_buffer_dirty(leaf);
+
 	ret = 0;
 
 out:
@@ -1665,7 +1688,7 @@ int btrfs_alloc_chunk(struct btrfs_trans_handle *trans,
 {
 	struct btrfs_device *device = NULL;
 	struct list_head private_devs;
-	struct list_head *dev_list = &info->fs_devices->devices;
+	struct list_head *devs = &info->fs_devices->devices;
 	struct list_head *cur;
 	u64 min_free;
 	u64 avail = 0;
@@ -1675,7 +1698,7 @@ int btrfs_alloc_chunk(struct btrfs_trans_handle *trans,
 	int ret;
 	int index;
 
-	if (list_empty(dev_list))
+	if (list_empty(devs))
 		return -ENOSPC;
 
 	ctl.type = type;
@@ -1692,7 +1715,7 @@ again:
 		return ret;
 
 	INIT_LIST_HEAD(&private_devs);
-	cur = dev_list->next;
+	cur = devs->next;
 	index = 0;
 
 	if (type & BTRFS_BLOCK_GROUP_DUP)
@@ -1714,11 +1737,11 @@ again:
 				index++;
 		} else if (avail > max_avail)
 			max_avail = avail;
-		if (cur == dev_list)
+		if (cur == devs)
 			break;
 	}
 	if (index < ctl.num_stripes) {
-		list_splice(&private_devs, dev_list);
+		list_splice(&private_devs, devs);
 		if (index >= ctl.min_stripes) {
 			ctl.num_stripes = index;
 			if (type & (BTRFS_BLOCK_GROUP_RAID10)) {
@@ -1750,13 +1773,13 @@ again:
 	while (!list_empty(&private_devs)) {
 		device = list_entry(private_devs.next, struct btrfs_device,
 				    dev_list);
-		list_move(&device->dev_list, dev_list);
+		list_move(&device->dev_list, devs);
 	}
 	/*
 	 * All private devs moved back to @dev_list, now dev_list should not be
 	 * empty.
 	 */
-	ASSERT(!list_empty(dev_list));
+	ASSERT(!list_empty(devs));
 	*start = ctl.start;
 	*num_bytes = ctl.num_bytes;
 
@@ -2054,7 +2077,7 @@ static int btrfs_stripe_tree_logical_to_physical(struct btrfs_fs_info *fs_info,
 			if (stripe->dev->devid !=
 			    btrfs_raid_stride_devid_nr(leaf, extent, i))
 				continue;
-			stripe->physical = btrfs_raid_stride_offset_nr(leaf, extent, i);
+			stripe->physical = btrfs_raid_stride_physical_nr(leaf, extent, i);
 			btrfs_release_path(&path);
 			return 0;
 		}
@@ -3073,8 +3096,13 @@ static int btrfs_fix_block_device_size(struct btrfs_fs_info *fs_info,
 		return -errno;
 	}
 
-	block_dev_size = round_down(device_get_partition_size_fd_stat(device->fd, &st),
-				    fs_info->sectorsize);
+	ret = device_get_partition_size_fd_stat(device->fd, &st, &block_dev_size);
+	if (ret < 0) {
+		errno = -ret;
+		error("failed to get device size for %s: %m", device->name);
+		return ret;
+	}
+	block_dev_size = round_down(block_dev_size, fs_info->sectorsize);
 
 	/*
 	 * Total_bytes in device item is no larger than the device block size,

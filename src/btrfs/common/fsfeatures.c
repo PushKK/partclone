@@ -222,6 +222,7 @@ static const struct btrfs_feature mkfs_features[] = {
 		VERSION_NULL(default),
 		.desc		= "block group tree, more efficient block group tracking to reduce mount time"
 	},
+#if EXPERIMENTAL
 	{
 		.name		= "rst",
 		.incompat_flag	= BTRFS_FEATURE_INCOMPAT_RAID_STRIPE_TREE,
@@ -238,6 +239,7 @@ static const struct btrfs_feature mkfs_features[] = {
 		VERSION_NULL(default),
 		.desc		= "raid stripe tree, enhanced file extent tracking"
 	},
+#endif
 	{
 		.name		= "squota",
 		.incompat_flag	= BTRFS_FEATURE_INCOMPAT_SIMPLE_QUOTA,
@@ -626,7 +628,7 @@ int btrfs_check_sectorsize(u32 sectorsize)
 		error("invalid sectorsize %u, must be power of 2", sectorsize);
 		return -EINVAL;
 	}
-	if (sectorsize < SZ_4K || sectorsize > SZ_64K) {
+	if (sectorsize < BTRFS_MIN_BLOCKSIZE || sectorsize > BTRFS_MAX_METADATA_BLOCKSIZE) {
 		error("invalid sectorsize %u, expected range is [4K, 64K]",
 		      sectorsize);
 		return -EINVAL;
@@ -648,9 +650,13 @@ int btrfs_check_sectorsize(u32 sectorsize)
 int btrfs_check_nodesize(u32 nodesize, u32 sectorsize,
 			 struct btrfs_mkfs_features *features)
 {
-	if (nodesize < sectorsize) {
+	if (nodesize < sectorsize || nodesize < SZ_4K) {
+		/*
+		 * Although we support 2K block size, we cannot support 2K
+		 * nodesize, as it's too small to contain all the needed root items.
+		 */
 		error("illegal nodesize %u (smaller than %u)",
-				nodesize, sectorsize);
+		      nodesize, max_t(u32, sectorsize, SZ_4K));
 		return -1;
 	} else if (nodesize > BTRFS_MAX_METADATA_BLOCKSIZE) {
 		error("illegal nodesize %u (larger than %u)",

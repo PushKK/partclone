@@ -21,6 +21,8 @@
 #include "partclone.h"
 #include "exfatclone.h"
 #include "progress.h"
+
+#define MAX_EXFAT_SECTORS (1ULL << 40) // Max sectors (approx 512TB @ 512B/sector) to prevent DoS/memory exhaustion
 #include "fs_common.h"
 
 #define EXFAT_SECTOR_SIZE(sb) (1 << (sb).sector_bits)
@@ -59,7 +61,7 @@ void read_bitmap(char* device, file_system_info fs_info, unsigned long* bitmap, 
     pc_init_bitmap(bitmap, 0x00, fs_info.totalblock);
 
     while (exfat_find_used_sectors(&ef, &a, &b) == 0){
-	printf("block %" PRId64 " %" PRId64 " \n", a, b);
+        log_mesg(2, 0, 0, fs_opt.debug, "%s: exfat_mount done\n", __FILE__);
 	for (block = a; block <= b; block++){
 	    pc_set_bit((uint64_t)block, bitmap, fs_info.totalblock);
 	    log_mesg(3, 0, 0, fs_opt.debug, "%s: used block %" PRId64 " \n", __FILE__, block);
@@ -86,6 +88,14 @@ void read_super_blocks(char* device, file_system_info* fs_info)
     strncpy(fs_info->fs, exfat_MAGIC, FS_MAGIC_SIZE);
     fs_info->block_size  = EXFAT_SECTOR_SIZE(*sb);
     fs_info->totalblock  = le64_to_cpu(sb->sector_count);
+
+    if (fs_info->totalblock == 0 || fs_info->totalblock > MAX_EXFAT_SECTORS) {
+        log_mesg(0, 1, 1, fs_opt.debug, "ERROR: Maliciously large or zero sector_count detected: %llu. Max allowed: %llu\n",
+                 fs_info->totalblock, MAX_EXFAT_SECTORS);
+        fs_close(); 
+        return; 
+    }
+
     fs_info->usedblocks  = le64_to_cpu(sb->sector_count) - free_sectors;
     fs_info->superBlockUsedBlocks = fs_info->usedblocks;
     fs_info->device_size = fs_info->totalblock * fs_info->block_size;
